@@ -35,8 +35,8 @@ CHANNEL_IDS = [
 BOSS_RESPAWNS = {
     "Rotura": 12.25,    # 12 horas e 25 minutos
     "Stomid": 18,
-    "Tigdal": 12.5,
-    "Hakir": 13,
+    "Tigdal": 12.25,
+    "Hakir": 18.25,
     "Damiros": 19 + 20/60  # 19 horas e 20 minutos
 }
 
@@ -204,13 +204,13 @@ class BossBot(commands.Bot):
 bot = BossBot()
 
 @bot.hybrid_command(name="agora", description="Mostra o status atual dos bosses em todos servidores")
-@commands.has_any_role("Admin", "Moderador", "Líder")
+@commands.has_any_role("Admin", "Moderador", "Líder", "Lider")
 async def agora(ctx):
     """Mostra o status atual dos bosses"""
     await bot.send_status(ctx)
 
 @bot.hybrid_command(name="morreu", description="Registra a morte de um boss em todos servidores")
-@commands.has_any_role("Admin", "Moderador", "Líder")
+@commands.has_any_role("Admin", "Moderador", "Líder", "Lider")
 async def morreu(ctx, boss_name: str):
     """Registra a morte de um boss"""
     if boss_name not in BOSS_RESPAWNS:
@@ -234,7 +234,7 @@ async def morreu(ctx, boss_name: str):
     await bot.send_status()
 
 @bot.hybrid_command(name="atualizar", description="Atualiza o tempo restante manualmente em todos servidores")
-@commands.has_any_role("Admin", "Moderador", "Líder")
+@commands.has_any_role("Admin", "Moderador", "Líder", "Lider")
 async def atualizar(ctx, boss_name: str, time_input: str):
     """Atualiza o tempo restante manualmente"""
     if boss_name not in BOSS_RESPAWNS:
