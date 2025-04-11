@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands, tasks
-from datetime import datetime
+from datetime import datetime, timedelta
+import asyncio  # Esta era a linha faltante!
 import json
 import os
 import logging
@@ -12,6 +13,18 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 if not TOKEN:
     raise RuntimeError("Token não encontrado!")
 
+# Configuração de bosses
+BOSS_RESPAWNS = {
+    "Rotura": 12.5,
+    "Stormid": 18,
+    "Tigdal": 12.5,
+    "Hakir": 13,
+    "Daminos": 19 + 20/60
+}
+
+CHANNEL_IDS = [1359985623007629685, 1352326383623340042, 1359946007479324977]
+
+# Configuração de logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)s | %(message)s',
@@ -36,51 +49,61 @@ class BossBot(commands.Bot):
         self.load_data()
 
     def load_data(self):
-        """Carrega dados do arquivo JSON"""
         try:
             if os.path.exists('boss_data.json'):
                 with open('boss_data.json', 'r') as f:
                     self.boss_data = json.load(f)
-                    logger.info("Dados carregados com sucesso")
         except Exception as e:
             logger.error(f"Erro ao carregar dados: {e}")
             self.reset_data()
 
     def save_data(self):
-        """Salva dados no arquivo JSON"""
         try:
             with open('boss_data.json', 'w') as f:
-                json.dump(self.boss_data, f)
-            logger.info("Dados salvos com sucesso")
+                json.dump(self.boss_data, f, indent=4)
         except Exception as e:
             logger.error(f"Erro ao salvar dados: {e}")
 
     def reset_data(self):
-        """Reseta todos os dados"""
         self.boss_data = {
             "timers": {boss: None for boss in BOSS_RESPAWNS},
             "spawn_times": {boss: None for boss in BOSS_RESPAWNS},
             "alerts": {boss: {} for boss in BOSS_RESPAWNS}
         }
-        logger.info("Dados resetados")
 
     async def setup_hook(self):
-        """Configuração inicial"""
         self.alert_loop.start()
         self.hourly_update.start()
 
     @tasks.loop(seconds=30)
     async def alert_loop(self):
-        """Loop principal de alertas"""
         try:
             now = datetime.now()
-            for boss in BOSS_RESPAWNS:
-                # ... (implementação do loop de alertas)
-                pass
+            for boss, timer in self.boss_data["timers"].items():
+                if timer and timer > 0:
+                    # Lógica de alertas aqui
+                    pass
         except Exception as e:
             logger.error(f"Erro no alert_loop: {e}")
 
-    # ... (restante dos métodos)
+    @tasks.loop(hours=1)
+    async def hourly_update(self):
+        await self.send_status()
+
+    async def send_status(self, ctx=None):
+        embed = discord.Embed(title="Status dos Bosses", color=0x00ff00)
+        for boss in BOSS_RESPAWNS:
+            timer = self.boss_data["timers"].get(boss)
+            status = "🟢 Pronto!" if timer == 0 else f"🟠 {timer}min" if timer else "🔴 Indisponível"
+            embed.add_field(name=boss, value=status, inline=False)
+        
+        if ctx:
+            await ctx.send(embed=embed)
+        else:
+            for channel_id in CHANNEL_IDS:
+                channel = self.get_channel(channel_id)
+                if channel:
+                    await channel.send(embed=embed)
 
 bot = BossBot()
 
