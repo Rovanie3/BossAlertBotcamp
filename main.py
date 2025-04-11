@@ -33,11 +33,11 @@ CHANNEL_IDS = [
 
 # Tempos de respawn dos bosses
 BOSS_RESPAWNS = {
-    "Rotura": 12.5,
+    "Rotura": 12.5,    # 12 horas e 30 minutos
     "Stormid": 18,
     "Tigdal": 12.5,
     "Hakir": 13,
-    "Daminos": 19 + 20/60
+    "Daminos": 19 + 20/60  # 19 horas e 20 minutos
 }
 
 class BossBot(commands.Bot):
@@ -51,10 +51,10 @@ class BossBot(commands.Bot):
             activity=discord.Game(name="Monitorando Bosses")
         )
         
-        self.boss_timers = {}
-        self.last_spawn_time = {}
-        self.last_alerts = {}
-        self.load_data()
+        self.boss_timers = {}  # Armazenará {'boss': minutos_restantes}
+        self.last_spawn_time = {}  # Armazenará {'boss': datetime_do_ultimo_spawn}
+        self.last_alerts = {}  # Controla os alertas já enviados
+        self.load_data()  # Carrega os dados salvos
 
     def load_data(self):
         """Carrega dados salvos do arquivo JSON"""
@@ -91,6 +91,7 @@ class BossBot(commands.Bot):
 
     async def setup_hook(self):
         """Configuração inicial do bot"""
+        # Inicializa dados para todos os bosses
         for boss in BOSS_RESPAWNS:
             if boss not in self.boss_timers:
                 self.boss_timers[boss] = None
@@ -100,20 +101,25 @@ class BossBot(commands.Bot):
                 self.last_alerts[boss] = {}
         
         self.alert_loop.start()
+        self.hourly_update.start()  # Nova tarefa periódica
 
     async def on_ready(self):
-        logger.info(f'Bot conectado como {self.user}')
-        logger.info(f'Conectado em {len(self.guilds)} servidores')
+        logger.info(f'Bot conectado como {self.user} (ID: {self.user.id})')
+        logger.info(f'Conectado em {len(self.guilds)} servidor(es)')
         
         # Verifica todos os canais configurados
         for channel_id in CHANNEL_IDS:
             channel = self.get_channel(channel_id)
-            if channel:
-                logger.info(f'Canal {channel.name} ({channel.id}) pronto!')
+            if channel is None:
+                logger.error(f"Canal com ID {channel_id} não encontrado!")
             else:
-                logger.warning(f'Canal {channel_id} não encontrado!')
+                logger.info(f"Canal encontrado: {channel.name} (ID: {channel.id})")
 
         await self.tree.sync()
+
+    async def close(self):
+        self.save_data()
+        await super().close()
 
     @tasks.loop(seconds=30)
     async def alert_loop(self):
@@ -127,32 +133,44 @@ class BossBot(commands.Bot):
                 if time_left is None or time_left <= 0:
                     continue
                 
+                # Verificar se precisa enviar alerta
                 if time_left <= 60 and time_left % 10 == 0:
                     last_alert = self.last_alerts.get(boss, {}).get(time_left)
                     
                     if last_alert is None or (now - datetime.fromisoformat(last_alert)).total_seconds() > 300:
                         self.last_alerts.setdefault(boss, {})[time_left] = now.isoformat()
+                        logger.info(f"Alerta disparado: {boss} em {time_left} minutos")
                         
                         for channel_id in CHANNEL_IDS:
                             channel = self.get_channel(channel_id)
                             if channel:
                                 if time_left == 0:
                                     msg = f"🚨 **{boss} SPAWNOU!** @everyone"
-                                    tts_msg = f"O {boss} acabou de nascer! Corram!"
+                                    tts_msg = f"O {boss} acabou de nascer, seus condenados! Corram antes que seja tarde!"
                                     self.last_spawn_time[boss] = now
-                                    self.boss_timers[boss] = None
+                                    # Reinicia o timer para o próximo spawn
+                                    self.boss_timers[boss] = BOSS_RESPAWNS[boss] * 60
                                 else:
                                     msg = f"🔔 **{boss} vai nascer em {time_left} minutos!** @everyone"
-                                    tts_msg = f"O {boss} vai nascer em {time_left} minutos!"
+                                    tts_msg = f"O {boss} vai nascer em {time_left} minutos, seus condenados! Preparem-se!"
                                 
                                 await channel.send(msg)
                                 await channel.send(tts_msg, tts=True)
                 
+                # Atualiza o contador
                 if time_left > 0:
-                    self.boss_timers[boss] = max(0, time_left - 0.5)
-                    
+                    self.boss_timers[boss] = max(0, time_left - 0.5)  # Diminui 0.5 minuto (30 segundos)
         except Exception as e:
             logger.error(f"Erro no alert_loop: {e}")
+
+    @tasks.loop(hours=1)
+    async def hourly_update(self):
+        """Envia atualização geral de status a cada hora"""
+        try:
+            logger.info("Enviando atualização horária dos bosses")
+            await self.send_status()
+        except Exception as e:
+            logger.error(f"Erro no hourly_update: {e}")
 
     async def send_status(self, ctx=None):
         """Envia status para todos os servidores ou para um comando específico"""
@@ -264,7 +282,21 @@ async def command_error(ctx, error):
 
 async def main():
     async with bot:
-        await bot.start(TOKEN)
+        try:
+            logger.info("Iniciando bot...")
+            await bot.start(TOKEN)
+        except discord.LoginFailure:
+            logger.error("Token inválido. Verifique seu token e tente novamente.")
+        except Exception as e:
+            logger.error(f"Erro fatal: {e}")
+        finally:
+            if not bot.is_closed():
+                await bot.close()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot encerrado pelo usuário")
+    except Exception as e:
+        logger.error(f"Erro inesperado: {e}")
