@@ -34,10 +34,10 @@ CHANNEL_IDS = [
 # Tempos de respawn dos bosses
 BOSS_RESPAWNS = {
     "Rotura": 12.5,    # 12 horas e 30 minutos
-    "Stormid": 18,
+    "Stomid": 18,
     "Tigdal": 12.5,
     "Hakir": 13,
-    "Daminos": 19 + 20/60  # 19 horas e 20 minutos
+    "Damiros": 19 + 20/60  # 19 horas e 20 minutos
 }
 
 class BossBot(commands.Bot):
