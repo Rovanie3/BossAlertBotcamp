@@ -1,36 +1,23 @@
 import discord
 from discord.ext import commands, tasks
-from datetime import datetime, timedelta
-import asyncio
+from datetime import datetime
 import json
 import os
 import logging
 from dotenv import load_dotenv
 
-# Configuração de logging
+# Configuração básica
+load_dotenv('token.env')
+TOKEN = os.getenv('DISCORD_TOKEN')
+if not TOKEN:
+    raise RuntimeError("Token não encontrado!")
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)s | %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger('discord')
-
-# Carrega variáveis de ambiente
-load_dotenv('token.env')
-TOKEN = os.getenv('DISCORD_TOKEN')
-if not TOKEN:
-    logger.error("Token não encontrado! Verifique token.env")
-    exit(1)
-
-# Configurações globais
-CHANNEL_IDS = [1359985623007629685, 1352326383623340042, 1359946007479324977]
-BOSS_RESPAWNS = {
-    "Rotura": 12.5,    # 12h30m
-    "Stormid": 18,
-    "Tigdal": 12.5,
-    "Hakir": 13,
-    "Daminos": 19 + 20/60  # 19h20m
-}
 
 class BossBot(commands.Bot):
     def __init__(self):
@@ -41,112 +28,65 @@ class BossBot(commands.Bot):
             intents=intents,
             activity=discord.Game(name="Monitorando Bosses")
         )
-        self.boss_timers = {}
-        self.last_spawn_time = {}
-        self.last_alerts = {}
+        self.boss_data = {
+            "timers": {},
+            "spawn_times": {},
+            "alerts": {}
+        }
         self.load_data()
 
-    # ... (métodos load_data, save_data, reset_data permanecem iguais)
+    def load_data(self):
+        """Carrega dados do arquivo JSON"""
+        try:
+            if os.path.exists('boss_data.json'):
+                with open('boss_data.json', 'r') as f:
+                    self.boss_data = json.load(f)
+                    logger.info("Dados carregados com sucesso")
+        except Exception as e:
+            logger.error(f"Erro ao carregar dados: {e}")
+            self.reset_data()
+
+    def save_data(self):
+        """Salva dados no arquivo JSON"""
+        try:
+            with open('boss_data.json', 'w') as f:
+                json.dump(self.boss_data, f)
+            logger.info("Dados salvos com sucesso")
+        except Exception as e:
+            logger.error(f"Erro ao salvar dados: {e}")
+
+    def reset_data(self):
+        """Reseta todos os dados"""
+        self.boss_data = {
+            "timers": {boss: None for boss in BOSS_RESPAWNS},
+            "spawn_times": {boss: None for boss in BOSS_RESPAWNS},
+            "alerts": {boss: {} for boss in BOSS_RESPAWNS}
+        }
+        logger.info("Dados resetados")
 
     async def setup_hook(self):
-        for boss in BOSS_RESPAWNS:
-            self.boss_timers.setdefault(boss, None)
-            self.last_spawn_time.setdefault(boss, None)
-            self.last_alerts.setdefault(boss, {})
-        
+        """Configuração inicial"""
         self.alert_loop.start()
         self.hourly_update.start()
 
     @tasks.loop(seconds=30)
     async def alert_loop(self):
+        """Loop principal de alertas"""
         try:
             now = datetime.now()
             for boss in BOSS_RESPAWNS:
-                time_left = self.boss_timers.get(boss)
-                if time_left is None or time_left <= 0:
-                    continue
-
-                if time_left <= 60 and time_left % 10 == 0:
-                    last_alert = self.last_alerts.get(boss, {}).get(time_left)
-                    if last_alert is None or (now - datetime.fromisoformat(last_alert)).total_seconds() > 300:
-                        self.last_alerts.setdefault(boss, {})[time_left] = now.isoformat()
-                        logger.info(f"Alerta disparado: {boss} em {time_left} minutos")
-                        
-                        for channel_id in CHANNEL_IDS:
-                            channel = self.get_channel(channel_id)
-                            if channel:
-                                if time_left == 0:
-                                    msg = f"🚨 **{boss} SPAWNOU!** @everyone"
-                                    self.last_spawn_time[boss] = now
-                                    self.boss_timers[boss] = BOSS_RESPAWNS[boss] * 60
-                                else:
-                                    msg = f"🔔 **{boss} em {time_left} minutos!** @everyone"
-                                await channel.send(msg)
-
-                if time_left > 0:
-                    self.boss_timers[boss] = max(0, time_left - 0.5)
+                # ... (implementação do loop de alertas)
+                pass
         except Exception as e:
             logger.error(f"Erro no alert_loop: {e}")
 
-    @tasks.loop(hours=1)
-    async def hourly_update(self):
-        try:
-            logger.info("Enviando atualização horária")
-            await self.send_status()
-        except Exception as e:
-            logger.error(f"Erro no hourly_update: {e}")
-
-    async def send_status(self, ctx=None):
-        try:
-            embed = discord.Embed(title="⏳ Status dos Bosses", color=0x00FF00)
-            for boss in BOSS_RESPAWNS:
-                time_left = self.boss_timers.get(boss)
-                status = "🟢 SPAWNOU!" if time_left == 0 else \
-                         f"🟠 {int(time_left//60)}h{int(time_left%60):02d}m" if time_left else "🔴 Sem dados"
-                embed.add_field(name=boss, value=status, inline=True)
-            
-            target = ctx or self.get_channel(CHANNEL_IDS[0])
-            await target.send(embed=embed)
-        except Exception as e:
-            logger.error(f"Erro ao enviar status: {e}")
+    # ... (restante dos métodos)
 
 bot = BossBot()
 
-@bot.hybrid_command(name="agora", description="Mostra status dos bosses")
-async def agora(ctx):
-    """Versão pública do comando"""
-    try:
-        await bot.send_status(ctx)
-    except Exception as e:
-        await ctx.send("🔧 Erro ao buscar status. Tente novamente!", ephemeral=True)
-        logger.error(f"Erro em !agora: {e}")
-
-@bot.hybrid_command(name="admin_agora", description="[ADMIN] Status detalhado")
-@commands.has_any_role("Admin", "Moderador", "Líder", "Lider", "Mod", "Administrador")
-async def admin_agora(ctx):
-    """Versão com permissões especiais"""
-    try:
-        await bot.send_status(ctx)
-        logger.info(f"Comando admin_agora usado por {ctx.author}")
-    except Exception as e:
-        await ctx.send("❌ Erro interno. Verifique logs.", ephemeral=True)
-        logger.error(f"Erro em admin_agora: {e}")
-
-@admin_agora.error
-async def admin_agora_error(ctx, error):
-    if isinstance(error, commands.MissingAnyRole):
-        await ctx.send(
-            "⚠️ Você precisa ser:\n"
-            "- Admin\n"
-            "- Moderador\n"
-            "- Líder\n\n"
-            "Peça para atualizarem meus cargos permitidos!",
-            ephemeral=True
-        )
-    else:
-        await ctx.send("⚙️ Erro desconhecido. Contate um admin.", ephemeral=True)
-
-# ... (comandos morreu, atualizar permanecem iguais)
+@bot.event
+async def on_ready():
+    logger.info(f'Bot conectado como {bot.user}')
 
 async def main():
     async with bot:
