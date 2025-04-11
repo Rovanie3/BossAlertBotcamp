@@ -134,7 +134,7 @@ class BossBot(commands.Bot):
                     continue
                 
                 # Verificar se precisa enviar alerta
-                if time_left <= 60 and time_left % 10 == 0:
+                if time_left <= 30 and time_left % 10 == 0:
                     last_alert = self.last_alerts.get(boss, {}).get(time_left)
                     
                     if last_alert is None or (now - datetime.fromisoformat(last_alert)).total_seconds() > 300:
